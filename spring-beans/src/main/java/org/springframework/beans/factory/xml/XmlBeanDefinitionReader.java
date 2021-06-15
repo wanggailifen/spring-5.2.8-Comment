@@ -127,6 +127,9 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 
 	private final XmlValidationModeDetector validationModeDetector = new XmlValidationModeDetector();
 
+	/**
+	 * 表示当前线程已经加载过的所有资源
+	 */
 	private final ThreadLocal<Set<EncodedResource>> resourcesCurrentlyBeingLoaded =
 			new NamedThreadLocal<Set<EncodedResource>>("XML bean definition resources currently being loaded"){
 				@Override
@@ -307,7 +310,7 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 	 */
 	@Override
 	public int loadBeanDefinitions(Resource resource) throws BeanDefinitionStoreException {
-		// TODO EncodedResource带编码的对Resource对象的封装
+		// TODO EncodedResource 带编码格式的Resource
 		return loadBeanDefinitions(new EncodedResource(resource));
 	}
 
@@ -324,9 +327,11 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 			logger.trace("Loading XML bean definitions from " + encodedResource);
 		}
 
+		// 表示当前线程已经加载过的所有资源
 		Set<EncodedResource> currentResources = this.resourcesCurrentlyBeingLoaded.get();
 
 		if (!currentResources.add(encodedResource)) {
+			// 不能重复加载
 			throw new BeanDefinitionStoreException(
 					"Detected cyclic loading of " + encodedResource + " - check your import definitions!");
 		}
@@ -336,6 +341,7 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 			//InputSource是jdk中的sax xml文件解析对象
 			InputSource inputSource = new InputSource(inputStream);
 			if (encodedResource.getEncoding() != null) {
+				// 表示 sax资源inputSource 也需要设置为encodedResource的编码格式
 				inputSource.setEncoding(encodedResource.getEncoding());
 			}
 
@@ -349,8 +355,10 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 					"IOException parsing XML document from " + encodedResource.getResource(), ex);
 		}
 		finally {
+			//处理完了需要从set中移除
 			currentResources.remove(encodedResource);
 			if (currentResources.isEmpty()) {
+				// 防止内存泄漏
 				this.resourcesCurrentlyBeingLoaded.remove();
 			}
 		}
@@ -394,10 +402,10 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 			throws BeanDefinitionStoreException {
 
 		try {
-			//把inputSource 封装成Document文件对象，这是jdk的API
+			// 把inputSource 封装成Document文件对象，这是jdk的API
 			Document doc = doLoadDocument(inputSource, resource);
 
-			// TODO 主要看这个方法，根据解析出来的document对象，拿到里面的标签元素封装成BeanDefinition
+			// TODO *** 根据解析出来的document对象，拿到里面的标签元素封装成BeanDefinition，注册到容器中，并返回新注册的数量
 			int count = registerBeanDefinitions(doc, resource);
 
 			if (logger.isDebugEnabled()) {
@@ -440,6 +448,7 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 	 * @see DocumentLoader#loadDocument
 	 */
 	protected Document doLoadDocument(InputSource inputSource, Resource resource) throws Exception {
+		// 将inputSource转化成程序能够识别的document对象
 		return this.documentLoader.loadDocument(inputSource, getEntityResolver(), this.errorHandler,
 				getValidationModeForResource(resource), isNamespaceAware());
 	}
@@ -517,13 +526,15 @@ public class XmlBeanDefinitionReader extends AbstractBeanDefinitionReader {
 	 * @see BeanDefinitionDocumentReader#registerBeanDefinitions
 	 */
 	public int registerBeanDefinitions(Document doc, Resource resource) throws BeanDefinitionStoreException {
-		// 又来一记委托模式，BeanDefinitionDocumentReader委托这个类进行document的解析
+		// BeanDefinitionDocumentReader委托这个类进行document的解析，每个Document对象都会创建一个BeanDefinitionDocumentReader
 		BeanDefinitionDocumentReader documentReader = createBeanDefinitionDocumentReader();
 		int countBefore = getRegistry().getBeanDefinitionCount();
 
 		// TODO 主要看这个方法，createReaderContext(resource)
-		//  XmlReaderContext上下文，封装了XmlBeanDefinitionReader对象
+		//  XmlReaderContext 上下文，封装了XmlBeanDefinitionReader对象 ，XmlBeanDefinitionReader中包含了BeanDefinitionRegistry
 		documentReader.registerBeanDefinitions(doc, createReaderContext(resource));
+
+		// 返回新注册的数量
 		return getRegistry().getBeanDefinitionCount() - countBefore;
 	}
 

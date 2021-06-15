@@ -93,7 +93,8 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 	@Override
 	public void registerBeanDefinitions(Document doc, XmlReaderContext readerContext) {
 		this.readerContext = readerContext;
-		// TODO 主要看这个方法，把root节点传进去
+		// TODO *** 把root节点传进去
+		// doc.getDocumentElement() 拿出顶层标签<beans>
 		doRegisterBeanDefinitions(doc.getDocumentElement());
 	}
 
@@ -132,6 +133,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 
 		if (this.delegate.isDefaultNamespace(root)) {
 			String profileSpec = root.getAttribute(PROFILE_ATTRIBUTE);
+			// 如果<beans>标签上有profile属性
 			if (StringUtils.hasText(profileSpec)) {
 				String[] specifiedProfiles = StringUtils.tokenizeToStringArray(
 						profileSpec, BeanDefinitionParserDelegate.MULTI_VALUE_ATTRIBUTE_DELIMITERS);
@@ -148,6 +150,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 		}
 
 		preProcessXml(root);
+
 		// TODO 主要看这个方法，标签具体解析过程
 		parseBeanDefinitions(root, this.delegate);
 
@@ -171,15 +174,20 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 	 */
 	protected void parseBeanDefinitions(Element root, BeanDefinitionParserDelegate delegate) {
 		if (delegate.isDefaultNamespace(root)) {
+			/**
+			 * 大部分情况这里是拿到<bean>标签
+			 */
 			NodeList nl = root.getChildNodes();
 			for (int i = 0; i < nl.getLength(); i++) {
 				Node node = nl.item(i);
 				if (node instanceof Element) {
 					Element ele = (Element) node;
+					// 条件成立：说明子标签也是spring默认标签
 					if (delegate.isDefaultNamespace(ele)) {
 						// TODO 默认标签解析
 						parseDefaultElement(ele, delegate);
 					}
+					// else：说明子标签是自定义标签
 					else {
 						// TODO 自定义标签解析
 						delegate.parseCustomElement(ele);
@@ -188,6 +196,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 			}
 		}
 		else {
+			// TODO 自定义标签解析
 			delegate.parseCustomElement(root);
 		}
 	}
@@ -207,6 +216,7 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 			// TODO bean标签，重要程度  5，必须看
 			processBeanDefinition(ele, delegate);
 		}
+		// 条件成立：说明是嵌套标签
 		else if (delegate.nodeNameEquals(ele, NESTED_BEANS_ELEMENT)) {
 			// recurse
 			doRegisterBeanDefinitions(ele);
@@ -320,14 +330,14 @@ public class DefaultBeanDefinitionDocumentReader implements BeanDefinitionDocume
 			//该方法功能不重要，设计模式重点看一下，装饰者设计模式，加上SPI设计思想
 			bdHolder = delegate.decorateBeanDefinitionIfRequired(ele, bdHolder);
 			try {
-				//TODO 对BeanDefinition对象进行缓存注册
+				//TODO *** 对BeanDefinition对象注册到容器中
 				BeanDefinitionReaderUtils.registerBeanDefinition(bdHolder, getReaderContext().getRegistry());
 			}
 			catch (BeanDefinitionStoreException ex) {
 				getReaderContext().error("Failed to register bean definition with name '" +
 						bdHolder.getBeanName() + "'", ele, ex);
 			}
-			// Send registration event.发布组件注册完毕的事件
+			// Send registration event. 发布BeanDefinition注册完毕的事件
 			getReaderContext().fireComponentRegistered(new BeanComponentDefinition(bdHolder));
 		}
 	}

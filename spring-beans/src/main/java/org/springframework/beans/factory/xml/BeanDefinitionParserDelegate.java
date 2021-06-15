@@ -412,17 +412,22 @@ public class BeanDefinitionParserDelegate {
 	 */
 	@Nullable
 	public BeanDefinitionHolder parseBeanDefinitionElement(Element ele, @Nullable BeanDefinition containingBean) {
+		// 获取bean标签的 id 和 name 属性值
 		String id = ele.getAttribute(ID_ATTRIBUTE);
 		String nameAttr = ele.getAttribute(NAME_ATTRIBUTE);
 
 		List<String> aliases = new ArrayList<>();
 		if (StringUtils.hasLength(nameAttr)) {
+			// 拆分为别名数组，放入别名列表
 			String[] nameArr = StringUtils.tokenizeToStringArray(nameAttr, MULTI_VALUE_ATTRIBUTE_DELIMITERS);
 			aliases.addAll(Arrays.asList(nameArr));
 		}
 
+		// 默认情况下beanname就是id
 		String beanName = id;
+
 		if (!StringUtils.hasText(beanName) && !aliases.isEmpty()) {
+			// 如果没有指定id ，就拿别名列表的第一个值作为beanname
 			beanName = aliases.remove(0);
 			if (logger.isTraceEnabled()) {
 				logger.trace("No XML 'id' specified - using '" + beanName +
@@ -435,9 +440,12 @@ public class BeanDefinitionParserDelegate {
 			checkNameUniqueness(beanName, aliases, ele);
 		}
 
-		//<bean>标签解析的核心方法，重要程度5
+		// TODO ***** <bean>标签解析的核心方法，重要程度5
 		AbstractBeanDefinition beanDefinition = parseBeanDefinitionElement(ele, beanName, containingBean);
+
+		// 条件成立： 说明解析成功
 		if (beanDefinition != null) {
+			// 条件成立： 说明解析成功beanName没有值
 			if (!StringUtils.hasText(beanName)) {
 				try {
 					if (containingBean != null) {
@@ -445,16 +453,22 @@ public class BeanDefinitionParserDelegate {
 								beanDefinition, this.readerContext.getRegistry(), true);
 					}
 					else {
+						// 生成 "classname + 序列号" 的一个名称  比如demo#0
 						beanName = this.readerContext.generateBeanName(beanDefinition);
 						// Register an alias for the plain bean class name, if still possible,
 						// if the generator returned the class name plus a suffix.
 						// This is expected for Spring 1.2/2.0 backwards compatibility.
 						String beanClassName = beanDefinition.getBeanClassName();
+
 						if (beanClassName != null &&
+								// 加上序列号后就大于name长度，一般成立
 								beanName.startsWith(beanClassName) && beanName.length() > beanClassName.length() &&
+								// 条件成立： 说明beanClassName没有被使用
 								!this.readerContext.getRegistry().isBeanNameInUse(beanClassName)) {
+							// 所有条件成立，就给他一个别名为beanClassName
 							aliases.add(beanClassName);
 						}
+
 					}
 					if (logger.isTraceEnabled()) {
 						logger.trace("Neither XML 'id' nor 'name' specified - " +
@@ -467,6 +481,7 @@ public class BeanDefinitionParserDelegate {
 				}
 			}
 			String[] aliasesArray = StringUtils.toStringArray(aliases);
+			// 包装成BeanDefinitionHolder返回
 			return new BeanDefinitionHolder(beanDefinition, beanName, aliasesArray);
 		}
 
@@ -501,24 +516,27 @@ public class BeanDefinitionParserDelegate {
 	@Nullable
 	public AbstractBeanDefinition parseBeanDefinitionElement(
 			Element ele, String beanName, @Nullable BeanDefinition containingBean) {
-
+		// parseState 表示当前解析器状态，栈顶元素表示为正在解析的bean
 		this.parseState.push(new BeanEntry(beanName));
 
 		String className = null;
+		// 一般都包含class属性，除非作为parent标签让子标签继承时才为null
 		if (ele.hasAttribute(CLASS_ATTRIBUTE)) {
 			className = ele.getAttribute(CLASS_ATTRIBUTE).trim();
 		}
 		String parent = null;
+		// bean标签可以继承parent标签，很少用到
 		if (ele.hasAttribute(PARENT_ATTRIBUTE)) {
 			parent = ele.getAttribute(PARENT_ATTRIBUTE);
 		}
 
 		try {
-			//创建GenericBeanDefinition对象
+			//创建GenericBeanDefinition对象，设置class属性
 			AbstractBeanDefinition bd = createBeanDefinition(className, parent);
 
-			//解析bean标签的属性，并把解析出来的属性设置到BeanDefinition对象中
+			//TODO 解析bean标签的attribute属性：lazy-init,init-method，depends-on，并把解析出来的属性设置到BeanDefinition对象中
 			parseBeanDefinitionAttributes(ele, beanName, containingBean, bd);
+
 			bd.setDescription(DomUtils.getChildElementValueByTagName(ele, DESCRIPTION_ELEMENT));
 
 			//解析bean中的meta标签
@@ -567,9 +585,11 @@ public class BeanDefinitionParserDelegate {
 			@Nullable BeanDefinition containingBean, AbstractBeanDefinition bd) {
 
 		if (ele.hasAttribute(SINGLETON_ATTRIBUTE)) {
+			// sington 属性已经废弃
 			error("Old 1.x 'singleton' attribute in use - upgrade to 'scope' declaration", ele);
 		}
 		else if (ele.hasAttribute(SCOPE_ATTRIBUTE)) {
+			// 读取scope属性
 			bd.setScope(ele.getAttribute(SCOPE_ATTRIBUTE));
 		}
 		else if (containingBean != null) {
@@ -577,26 +597,31 @@ public class BeanDefinitionParserDelegate {
 			bd.setScope(containingBean.getScope());
 		}
 
+		//抽象标签
 		if (ele.hasAttribute(ABSTRACT_ATTRIBUTE)) {
 			bd.setAbstract(TRUE_VALUE.equals(ele.getAttribute(ABSTRACT_ATTRIBUTE)));
 		}
-
+		//lazy-init属性 懒加载
 		String lazyInit = ele.getAttribute(LAZY_INIT_ATTRIBUTE);
 		if (isDefaultValue(lazyInit)) {
 			lazyInit = this.defaults.getLazyInit();
 		}
 		bd.setLazyInit(TRUE_VALUE.equals(lazyInit));
 
+
 		String autowire = ele.getAttribute(AUTOWIRE_ATTRIBUTE);
+		// 设置Autowire的模式
 		bd.setAutowireMode(getAutowireMode(autowire));
 
+		//depends-on 需要先处理另外一个bean
 		if (ele.hasAttribute(DEPENDS_ON_ATTRIBUTE)) {
 			String dependsOn = ele.getAttribute(DEPENDS_ON_ATTRIBUTE);
 			bd.setDependsOn(StringUtils.tokenizeToStringArray(dependsOn, MULTI_VALUE_ATTRIBUTE_DELIMITERS));
 		}
-
+		//autowire-candidate 属性 默认为true 设置了bean的autowire-candidate=false后，当前bean就不参与外部bean的自动依赖注入。
 		String autowireCandidate = ele.getAttribute(AUTOWIRE_CANDIDATE_ATTRIBUTE);
 		if (isDefaultValue(autowireCandidate)) {
+			//正则表达式
 			String candidatePattern = this.defaults.getAutowireCandidates();
 			if (candidatePattern != null) {
 				String[] patterns = StringUtils.commaDelimitedListToStringArray(candidatePattern);
@@ -607,10 +632,12 @@ public class BeanDefinitionParserDelegate {
 			bd.setAutowireCandidate(TRUE_VALUE.equals(autowireCandidate));
 		}
 
+		// primary 当某个接口有多个实现对象时，外部spring对象依赖该接口时，可以给该接口的实现指定一个“主要”对象。参与依赖注入。
 		if (ele.hasAttribute(PRIMARY_ATTRIBUTE)) {
 			bd.setPrimary(TRUE_VALUE.equals(ele.getAttribute(PRIMARY_ATTRIBUTE)));
 		}
 
+		// init-method 当spring创建该bean对应的实例时，最终会执行init-method 配置的方法。
 		if (ele.hasAttribute(INIT_METHOD_ATTRIBUTE)) {
 			String initMethodName = ele.getAttribute(INIT_METHOD_ATTRIBUTE);
 			bd.setInitMethodName(initMethodName);
@@ -620,6 +647,7 @@ public class BeanDefinitionParserDelegate {
 			bd.setEnforceInitMethod(false);
 		}
 
+		// destroy-method 当spring容器销毁时，执行spring容器内管理的bean实例的销毁方法。
 		if (ele.hasAttribute(DESTROY_METHOD_ATTRIBUTE)) {
 			String destroyMethodName = ele.getAttribute(DESTROY_METHOD_ATTRIBUTE);
 			bd.setDestroyMethodName(destroyMethodName);
@@ -629,9 +657,12 @@ public class BeanDefinitionParserDelegate {
 			bd.setEnforceDestroyMethod(false);
 		}
 
+		// factory-method
 		if (ele.hasAttribute(FACTORY_METHOD_ATTRIBUTE)) {
 			bd.setFactoryMethodName(ele.getAttribute(FACTORY_METHOD_ATTRIBUTE));
 		}
+
+		// factory-bean
 		if (ele.hasAttribute(FACTORY_BEAN_ATTRIBUTE)) {
 			bd.setFactoryBeanName(ele.getAttribute(FACTORY_BEAN_ATTRIBUTE));
 		}
@@ -797,8 +828,11 @@ public class BeanDefinitionParserDelegate {
 				}
 				else {
 					try {
+						// 给解析器对象设置状态表示正在解析constructor参数。
 						this.parseState.push(new ConstructorArgumentEntry(index));
+
 						Object value = parsePropertyValue(ele, bd, null);
+
 						ConstructorArgumentValues.ValueHolder valueHolder = new ConstructorArgumentValues.ValueHolder(value);
 						if (StringUtils.hasLength(typeAttr)) {
 							valueHolder.setType(typeAttr);
@@ -940,13 +974,16 @@ public class BeanDefinitionParserDelegate {
 
 		boolean hasRefAttribute = ele.hasAttribute(REF_ATTRIBUTE);
 		boolean hasValueAttribute = ele.hasAttribute(VALUE_ATTRIBUTE);
+		// ref 与 value 不能同时有
 		if ((hasRefAttribute && hasValueAttribute) ||
+				//ref 与 value 有一个就不能再有子标签
 				((hasRefAttribute || hasValueAttribute) && subElement != null)) {
 			error(elementName +
 					" is only allowed to contain either 'ref' attribute OR 'value' attribute OR sub-element", ele);
 		}
 
 		if (hasRefAttribute) {
+			//读取ref 封装成 RuntimeBeanReference对象
 			String refName = ele.getAttribute(REF_ATTRIBUTE);
 			if (!StringUtils.hasText(refName)) {
 				error(elementName + " contains empty 'ref' attribute", ele);
@@ -956,6 +993,7 @@ public class BeanDefinitionParserDelegate {
 			return ref;
 		}
 		else if (hasValueAttribute) {
+			//读取value 封装成 TypedStringValue对象
 			TypedStringValue valueHolder = new TypedStringValue(ele.getAttribute(VALUE_ATTRIBUTE));
 			valueHolder.setSource(extractSource(ele));
 			return valueHolder;
