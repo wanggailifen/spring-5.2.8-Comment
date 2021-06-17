@@ -224,6 +224,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 			// TODO *循环依赖* 如果一级缓存中有，则直接返回
 			Object singletonObject = this.singletonObjects.get(beanName);
 			if (singletonObject == null) {
+				// 容器正在销毁中，不允许创建bean
 				if (this.singletonsCurrentlyInDestruction) {
 					throw new BeanCreationNotAllowedException(beanName,
 							"Singleton bean creation not allowed while singletons of this factory are in destruction " +
@@ -271,7 +272,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 					afterSingletonCreation(beanName);
 				}
 				if (newSingleton) {
-					//创建对象成功时，把对象缓存到singletonObjects缓存中,bean创建完成时放入一级缓存
+					//TODO 创建对象成功时，把对象缓存到singletonObjects缓存中,bean创建完成时放入一级缓存
 					addSingleton(beanName, singletonObject);
 				}
 			}

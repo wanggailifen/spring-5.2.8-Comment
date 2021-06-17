@@ -242,7 +242,15 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	protected <T> T doGetBean(
 			String name, @Nullable Class<T> requiredType, @Nullable Object[] args, boolean typeCheckOnly)
 			throws BeansException {
-		// 处理一下 &符号(FactoryBean)
+		/*
+		FactoryBean: 如果某个bean的配置非常复杂，使用Spring管理不容易...不够灵活，
+		想要使用编码的形式去构建它，那么你就可以提供个构建该bean实例的工厂，这个工厂就是FactoryBEan接口实现类。
+		FactoryBean接口实现类还是需要使用Spring管理的。
+		这里就涉及到两种对象，一种是FactoryBean接口实现类(IOC管理的)，另一个就是FactoryBean接口内部管理的对象。
+				如果要拿FactoryBean接口实现类， 使用getBean时传的beanName需要带“&”开头。
+				如果你要FactoryBean内部管理的对象，你直接传beanName不需要带“&”开头。
+		 */
+		// 处理一下 beanName  因为这里有可能是别名，也有可能以&符号开头 (FactoryBean)
 		String beanName = transformedBeanName(name);
 		Object bean;
 
@@ -260,16 +268,16 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					logger.trace("Returning cached instance of singleton bean '" + beanName + "'");
 				}
 			}
-			//该方法是FactoryBean接口的调用入口
+			//TODO 从缓存中拿到后，这里的对象可能是普通单实例，也有可能是FactoryBean实例，所以还需要进行处理
+			//主要是看name是带“&” (拿FactoryBean)  还是不带“&”（拿FactoryBean管理的bean实例）
 			bean = getObjectForBeanInstance(sharedInstance, name, beanName, null);
 		}
 
 
 		// TODO 如果一级缓存中拿不到
 		else {
-
-			if (isPrototypeCurrentlyInCreation(beanName)) {
 				// TODO 多例情况下的循环依赖检测，如果TheadLocal中已经有这个bean的name了，则直接报错
+			if (isPrototypeCurrentlyInCreation(beanName)) {
 				throw new BeanCurrentlyInCreationException(beanName);
 			}
 
@@ -300,7 +308,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			}
 
 			try {
-				// TODO 获取合并后的BeanDefinition
+				// TODO *** 获取合并后的BeanDefinition
 				RootBeanDefinition mbd = getMergedLocalBeanDefinition(beanName);
 				// 判断这个BeanDefinition是不是抽象的，如果是抽象的则不能实例化，抛出异常
 				checkMergedBeanDefinition(mbd, beanName, args);
@@ -310,10 +318,12 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 				String[] dependsOn = mbd.getDependsOn();
 				if (dependsOn != null) {
 					for (String dep : dependsOn) {
+						// TODO 循环依赖检测 两个map
 						if (isDependent(beanName, dep)) {
 							throw new BeanCreationException(mbd.getResourceDescription(), beanName,
 									"Circular depends-on relationship between '" + beanName + "' and '" + dep + "'");
 						}
+
 						registerDependentBean(dep, beanName);
 						try {
 							//实例化
@@ -343,7 +353,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 							throw ex;
 						}
 					});
-					//该方法是FactoryBean接口的调用入口
+					//TODO 拿到后，这里的对象可能是普通单实例，也有可能是FactoryBean实例，所以还需要进行处理
 					bean = getObjectForBeanInstance(sharedInstance, name, beanName, mbd);
 				}
 
@@ -360,7 +370,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 					finally {
 						afterPrototypeCreation(beanName);
 					}
-					//该方法是FactoryBean接口的调用入口
+					//TODO 拿到后，这里的对象可能是普通单实例，也有可能是FactoryBean实例，所以还需要进行处理
 					bean = getObjectForBeanInstance(prototypeInstance, name, beanName, mbd);
 				}
 
@@ -383,6 +393,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 								afterPrototypeCreation(beanName);
 							}
 						});
+						//TODO 拿到后，这里的对象可能是普通单实例，也有可能是FactoryBean实例，所以还需要进行处理
 						bean = getObjectForBeanInstance(scopedInstance, name, beanName, mbd);
 					}
 					catch (IllegalStateException ex) {
@@ -1138,7 +1149,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			this.prototypesCurrentlyInCreation.set(beanName);
 		}
 		else if (curVal instanceof String) {
-			// TODO 第二次设置值，需要升级为一个map，把原来的值和新值都放进去
+			// TODO 第二次设置值，需要升级为一个set，把原来的值和新值都放进去
 			Set<String> beanNameSet = new HashSet<>(2);
 			beanNameSet.add((String) curVal);
 			beanNameSet.add(beanName);
@@ -1339,15 +1350,18 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 
 		synchronized (this.mergedBeanDefinitions) {
 			RootBeanDefinition mbd = null;
+
 			RootBeanDefinition previous = null;
 
 			// Check with full lock now in order to enforce the same merged instance.
 			if (containingBd == null) {
 				mbd = this.mergedBeanDefinitions.get(beanName);
 			}
-
+			// mbd为null或者过期
 			if (mbd == null || mbd.stale) {
+				// 当前beanName对应的过期mbd信息
 				previous = mbd;
+				// 条件成立:说明当前beanName对应BD没有使用继承，就不用处理继承
 				if (bd.getParentName() == null) {
 					// Use copy of given root bean definition.
 					if (bd instanceof RootBeanDefinition) {
@@ -1357,14 +1371,19 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 						mbd = new RootBeanDefinition(bd);
 					}
 				}
+				// 使用了继承
 				else {
 					// Child bean definition: needs to be merged with parent.
 					BeanDefinition pbd;
 					try {
+						// 处理别名和&符号
 						String parentBeanName = transformedBeanName(bd.getParentName());
+						// TODO 一般情况
 						if (!beanName.equals(parentBeanName)) {
+							// 这里是个递归调用，最红返回父bd信息
 							pbd = getMergedBeanDefinition(parentBeanName);
 						}
+						// 子bd和父bd名称一样， 不是一般情况
 						else {
 							BeanFactory parent = getParentBeanFactory();
 							if (parent instanceof ConfigurableBeanFactory) {
@@ -1382,7 +1401,9 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 								"Could not resolve parent bean definition '" + bd.getParentName() + "'", ex);
 					}
 					// Deep copy with overridden values.
+					// 按照父bd信息创造mbd对象
 					mbd = new RootBeanDefinition(pbd);
+					// 子bd覆盖mbd信息，以子bd为基准，pbd为辅
 					mbd.overrideFrom(bd);
 				}
 
@@ -1840,15 +1861,19 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 			//从缓存里面拿FactoryBean类型的实例
 			object = getCachedObjectForFactoryBean(beanName);
 		}
+		// 缓存中没有
 		if (object == null) {
 			// Return bean instance from factory.
 			FactoryBean<?> factory = (FactoryBean<?>) beanInstance;
 			// Caches object obtained from FactoryBean if it is a singleton.
 			if (mbd == null && containsBeanDefinition(beanName)) {
+				//拿到合并后的BD信息。
+				//为什么是合并后的呢?因为BD是直接维承的。合并后的BD信息是包合维承回来的BD.
 				mbd = getMergedLocalBeanDefinition(beanName);
 			}
+			// synthetic 默认false 表示为用户对象，如果为true，表示是系统对象
 			boolean synthetic = (mbd != null && mbd.isSynthetic());
-			//重点看
+			// TODO 重点看
 			object = getObjectFromFactoryBean(factory, beanName, !synthetic);
 		}
 		return object;
@@ -1894,6 +1919,7 @@ public abstract class AbstractBeanFactory extends FactoryBeanRegistrySupport imp
 	 */
 	protected void registerDisposableBeanIfNecessary(String beanName, Object bean, RootBeanDefinition mbd) {
 		AccessControlContext acc = (System.getSecurityManager() != null ? getAccessControlContext() : null);
+		// 多例不能注册回调
 		if (!mbd.isPrototype() && requiresDestruction(bean, mbd)) {
 			if (mbd.isSingleton()) {
 				// Register a DisposableBean implementation that performs all destruction
